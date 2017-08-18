@@ -4,6 +4,14 @@
 #     Flask-WhooshAlchemy3, 2017
 # <<
 
-$END$
+import setuptools
+
+setuptools.setup(
+    setup_requires=[
+        'pbr'
+    ],
+    pbr=True
+)
+
 
 

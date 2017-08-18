@@ -1,0 +1,5 @@
+blinker>=1.4
+Flask>=0.12
+Flask-SQLAlchemy>=2
+SQLAlchemy==1.1.13
+Whoosh==2.7.0
