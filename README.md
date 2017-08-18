@@ -1,5 +1,9 @@
 # Flask-WhooshAlchemy3
+[![PyPI version](https://badge.fury.io/py/flask-whooshalchemy3.svg)](https://badge.fury.io/py/flask-whooshalchemy3)
+[![license](https://img.shields.io/github/license/blakev/flask-whooshalchemy3.svg)]()
+
 Whoosh indexing capabilities for Flask-SQLAlchemy, Python 3 compatibility fork.
+Performance improvements and suggestions are readily welcome.
 
 Inspired from gyllstromk's [Flask-WhooshAlchemy](https://github.com/gyllstromk/Flask-WhooshAlchemy).
 
