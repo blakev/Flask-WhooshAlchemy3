@@ -184,13 +184,12 @@ def create_index(app, model):
 
     app.search_indexes[name] = index
 
-    kls = model.__class__
-    kls.whoosh = Searcher(pk, index)
-    kls.whoosh_pk = pk
-    kls.query_class = QueryProxy
+    model.whoosh = Searcher(pk, index)
+    model.whoosh_pk = pk
+    model.query_class = QueryProxy
 
     if app.config.get('WHOOSH_RAM_CACHE', False):
-        kls.whoosh.searcher.set_caching_policy(storage=RamStorage())
+        model.whoosh.searcher.set_caching_policy(storage=RamStorage())
     return index
 
 
@@ -241,5 +240,6 @@ def search_index(app, model):
     index = app.search_indexes.get(
         model.__tablename__, create_index(app, model))
     return index
+
 
 flask_sqlalchemy.models_committed.connect(_post_flush)
