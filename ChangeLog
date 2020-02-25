@@ -1,0 +1,27 @@
+CHANGES
+=======
+
+0.2.0
+-----
+
+* Set description format to markdown
+* Fix #2 #3: Update version dependencies, support python3.8
+* Fix #2: AttributeError 'BaseQuery' object has no 'search'
+* Fix 1: BaseQuery object has no attribute search
+* Update README
+
+0.1.1
+-----
+
+* Misc changes
+* Project restructure
+* Update README.md
+* Update requirements to include pbr
+
+0.1.0
+-----
+
+* First!
+* update .gitignore
+* Create README.md
+* Initial commit
