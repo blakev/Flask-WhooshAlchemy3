@@ -183,13 +183,16 @@ def create_index(app, model):
         index = whoosh.index.create_in(full_path, schema)
 
     app.search_indexes[name] = index
+    kls = model.__class__
 
-    model.whoosh = Searcher(pk, index)
-    model.whoosh_pk = pk
-    model.query_class = QueryProxy
+    kls.whoosh = model.whoosh = Searcher(pk, index)
+    kls.whoosh_pk = model.whoosh_pk = pk
+    kls.query_class = model.query_class = QueryProxy
 
     if app.config.get('WHOOSH_RAM_CACHE', False):
-        model.whoosh.searcher.set_caching_policy(storage=RamStorage())
+        ram_storage = RamStorage()
+        model.whoosh.searcher.set_caching_policy(storage=ram_storage)
+        kls.whoosh.searcher.set_caching_policy(storage=ram_storage)
     return index
 
 
