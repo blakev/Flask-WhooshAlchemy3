@@ -61,20 +61,22 @@ class QueryProxy(flask_sqlalchemy.BaseQuery):
         if self._whoosh_results is None or self._order_by is not False:
             return _iter
 
+        super_rows = list(_iter)                   # Correcting Pagination BUG
+
         ordered = []
 
-        for row in _iter:
+        # for row in _iter:                        # Correcting Pagination BUG
+        for row in super_rows:                     # Correcting Pagination BUG
             # we have to convert the primary-key, as stored in the SQL database
             #  into a string because the key is stored as an `ID` in whoosh.
             #  The ID field is string only; plus, this allows for uuid pk's.
-            str_pk = str(getattr(row, self._pk))
-            heapq.heappush(
-                ordered, (self._whoosh_results[str_pk], row))
-
-        def inner():
-            while ordered:
-                yield heapq.heappop(ordered)[1]
-        return inner()
+            if hasattr(row, self._pk):             # Correcting Pagination BUG
+                str_pk = str(getattr(row, self._pk))
+                heapq.heappush(
+                    ordered, (self._whoosh_results[str_pk], row))
+            else:                                   # Correcting Pagination BUG
+                # PK column not found in result row # Correcting Pagination BUG
+                return iter(super_rows)             # Correcting Pagination BUG
 
     def search(self, query, limit=None, fields=None, or_=False):
         """ Perform a woosh index search. """
