@@ -106,3 +106,5 @@ ENV/
 
 # mypy
 .mypy_cache/
+/poetry.lock
+/.requirements.txt

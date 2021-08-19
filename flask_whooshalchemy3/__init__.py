@@ -8,6 +8,7 @@ import os
 import heapq
 import logging
 import importlib
+from inspect import isfunction
 from collections import defaultdict
 from typing import Optional, List, Tuple, Type
 
@@ -210,24 +211,24 @@ def get_analyzer(
     model: Model,
 ) -> Analyzer:
     analyzer = getattr(model, '__analyzer__', None)
+
     if not analyzer:
         analyzer = app.config.get('WHOOSH_ANALYZER', DEFAULT_WHOOSH_ANALYZER)
 
-        if isinstance(analyzer, str):
-            try:
-                mod = importlib.import_module('whoosh.analysis', analyzer)
-                analyzer = getattr(mod, analyzer)
-            except Exception as e:
-                raise WhooshAlchemyError from e
+    if isinstance(analyzer, str):
+        try:
+            mod = importlib.import_module('whoosh.analysis', analyzer)
+            analyzer = getattr(mod, analyzer)
+        except Exception as e:
+            raise WhooshAlchemyError from e
 
-        if not isinstance(analyzer,
-                          (CompositeAnalyzer, Analyzer)) and callable(analyzer):
-            val = analyzer()
-        else:
-            val = analyzer
-        setattr(model, '__analyzer__', val)
-        analyzer = val
-    return analyzer
+    if isfunction(analyzer):
+        val = analyzer()
+    else:
+        val = analyzer
+
+    setattr(model, '__analyzer__', val)
+    return val
 
 
 def get_schema(
