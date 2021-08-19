@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "flask-whooshalchemy3"
+version = "0.3.0"
+description = "Whoosh indexing capabilities for Flask-SQLAlchemy, Python 3 compatibility fork."
+authors = ["Blake VandeMerwe <blakev@null.net>"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/blakev/Flask-WhooshAlchemy3"
+repository = "https://github.com/blakev/Flask-WhooshAlchemy3.git"
+keywords = ["search", "orm", "flask", "whoosh", "sqlalchemy"]
+include = ['LICENSE']
+exclude = ['scratch.py']
+
+[tool.poetry.dependencies]
+python = "^3.6.1"
+Whoosh = ">=2.7"
+Flask = ">=1.1,<2.0 || >=2.0"
+SQLAlchemy = ">=1.4,<1.4.23"
+Flask-SQLAlchemy = "^2.5.1"
+blinker = "^1.4"
+
+[tool.poetry.dev-dependencies]
+pytest = "^6.2.4"
+tox = "^3.24.2"
+yapf = "^0.31.0"
+isort = "^5.9.3"
+Flask-Testing = "^0.8.1"
+pytest-cov = "^2.12.1"
+pytest-flask = "^1.2.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

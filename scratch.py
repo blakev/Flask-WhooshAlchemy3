@@ -5,11 +5,14 @@
 # <<
 
 import random
-from flask import Flask, request
-from flask_sqlalchemy import SQLAlchemy
-import flask_whooshalchemy
 
+from flask import Flask, request
 from whoosh.analysis import StemmingAnalyzer
+from flask_sqlalchemy import SQLAlchemy
+
+import flask_whooshalchemy3
+
+
 app = Flask(__name__)
 app.config.update(dict(
     SQLALCHEMY_DATABASE_URI='sqlite:///db.sqlite',
@@ -66,7 +69,7 @@ NAMES = ('Red', 'Green', 'Blue', 'Yellow',)
 @app.before_first_request
 def bootstrap():
     db.create_all()
-    flask_whooshalchemy.search_index(app, Org)
+    flask_whooshalchemy3.search_index(app, Org)
 
     for x in range(100):
         rec = Org(active=random.choice(BOOL),

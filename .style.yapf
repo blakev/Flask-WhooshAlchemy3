@@ -1,0 +1,20 @@
+[style]
+based_on_style = google
+column_limit = 89
+spaces_before_comment = 2
+dedent_closing_brackets = true
+split_arguments_when_comma_terminated = true
+join_multiple_lines = true
+each_dict_entry_on_separate_line = true
+blank_lines_around_top_level_definition = 2
+blank_line_before_nested_class_or_def = true
+blank_line_before_class_docstring = false
+blank_line_before_module_docstring = false
+indent_dictionary_value = true
+indent_closing_brackets = false
+coalesce_brackets = true
+# force_multiline_dict = true
+no_spaces_around_selected_binary_operators = true
+# space_inside_brackets = false
+split_complex_comprehension = true
+# split_penalty_import_names
