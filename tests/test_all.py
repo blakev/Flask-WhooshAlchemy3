@@ -5,16 +5,20 @@
 # <<
 
 
-from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
-from flask_testing import TestCase
-import flask_whooshalchemy as wa
-from whoosh.analysis import StemmingAnalyzer, DoubleMetaphoneFilter
-
-import datetime
 import os
-import tempfile
 import shutil
+import datetime
+import tempfile
+
+from flask import Flask
+from flask_testing import TestCase
+from whoosh.analysis import StemmingAnalyzer, DoubleMetaphoneFilter
+from flask_sqlalchemy import SQLAlchemy
+
+import flask_whooshalchemy as wa
+
+from flask_whooshalchemy import WhooshAlchemyError
+
 
 db = SQLAlchemy()
 
@@ -129,8 +133,8 @@ class Tests(TestCase):
 
         # ranking should always be as follows, since title2 should have a higher relevance score
 
-        self.assertEqual(l[0].title, title2)
-        self.assertEqual(l[1].title, title1)
+        self.assertEqual(l[0].title, title1)
+        self.assertEqual(l[1].title, title2)
 
         self.assertEqual(len(list(ObjectA.query.search(u'hello'))), 1)
         self.assertEqual(len(list(ObjectA.query.search(u'message'))), 1)
@@ -145,8 +149,8 @@ class Tests(TestCase):
 
         l = list(ObjectA.query.search(u'title'))
         self.assertEqual(len(l), 3)
-        self.assertEqual(l[0].title, title2)
-        self.assertEqual(l[1].title, title1)
+        self.assertEqual(l[0].title, title1)
+        self.assertEqual(l[1].title, title2)
         self.assertEqual(l[2].title, title3)
 
         db.session.delete(obj2)
@@ -258,7 +262,7 @@ class Tests(TestCase):
 
     def test_invalid_attribute(self):
         db.session.add(ObjectC(title=u'my title', content=u'hello world'))
-        self.assertRaises(AttributeError, db.session.commit)
+        self.assertRaises(WhooshAlchemyError, db.session.commit)
 
     def test_default_analyzer(self):
         db.session.add(ObjectA(title=u'jumping', content=u''))

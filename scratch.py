@@ -5,11 +5,14 @@
 # <<
 
 import random
+
 from flask import Flask, request
+from whoosh.analysis import StemmingAnalyzer
 from flask_sqlalchemy import SQLAlchemy
+
 import flask_whooshalchemy
 
-from whoosh.analysis import StemmingAnalyzer
+
 app = Flask(__name__)
 app.config.update(dict(
     SQLALCHEMY_DATABASE_URI='sqlite:///db.sqlite',

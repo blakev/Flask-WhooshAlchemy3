@@ -7,33 +7,58 @@
 import os
 import heapq
 import logging
+import importlib
 from collections import defaultdict
+from typing import Optional, List, Tuple, Type
 
 import whoosh
 import sqlalchemy
 import flask_sqlalchemy
 import whoosh.index
+from flask import Flask
 from whoosh import fields as whoosh_fields
-from whoosh.analysis import StemmingAnalyzer
+from whoosh.index import Index
+from whoosh.analysis import Analyzer, CompositeAnalyzer
 from whoosh.qparser import OrGroup, AndGroup, MultifieldParser
 from whoosh.filedb.filestore import RamStorage
 from whoosh.writing import AsyncWriter
+from whoosh.fields import Schema
 from sqlalchemy import types as sql_types
 from sqlalchemy.orm import EXT_CONTINUE
+from flask_sqlalchemy.model import Model
 
 logger = logging.getLogger(__name__)
 
+try:
+    BinaryType = sql_types.Binary
+except AttributeError:
+    BinaryType = sql_types.LargeBinary
 
 # DEFAULTS
-DEFAULT_WHOOSH_ANALYZER = StemmingAnalyzer()
-DEFAULT_WHOOSH_INDEX_PATH = os.path.join(
-    os.path.abspath(os.getcwd()), '.indexes')
-
+UNSET = object()
 UPDATE_FIELDS = ('update', 'insert')
-TEXT_TYPES = (sql_types.String, sql_types.Unicode, sql_types.Text)
-DATE_TYPES = (sql_types.DateTime, sql_types.Date)
-NUM_TYPES = (sql_types.Integer, sql_types.BigInteger, sql_types.SmallInteger,
-             sql_types.Float, sql_types.Binary)
+DEFAULT_WHOOSH_ANALYZER = 'StemmingAnalyzer'
+DEFAULT_WHOOSH_INDEX_PATH = os.path.join(os.path.abspath(os.getcwd()), '.indexes')
+
+TEXT_TYPES = (
+    sql_types.String,
+    sql_types.Unicode,
+    sql_types.Text,
+)
+
+DATE_TYPES = (
+    sql_types.DateTime,
+    sql_types.Date,
+    sql_types.Time,
+)
+
+NUM_TYPES = (
+    sql_types.Integer,
+    sql_types.BigInteger,
+    sql_types.SmallInteger,
+    sql_types.Float,
+    BinaryType,
+)
 
 
 class WhooshAlchemyError(Exception):
@@ -41,11 +66,12 @@ class WhooshAlchemyError(Exception):
 
 
 class QueryProxy(flask_sqlalchemy.BaseQuery):
+
     def __init__(self, entities, session=None):
         super(QueryProxy, self).__init__(entities, session)
 
         # sqlalchemy database model base class
-        self._model_cls = self._mapper_zero().class_
+        self._model_cls = entities.entity
 
         # references into our Whoosh index
         self._pk = self._model_cls.whoosh_pk
@@ -55,29 +81,41 @@ class QueryProxy(flask_sqlalchemy.BaseQuery):
         self._whoosh_results = None
 
     def __iter__(self):
-        """ Sort the results by Whoosh rank; relevance. """
+        """Sort the results by Whoosh rank; relevance. """
         _iter = super(QueryProxy, self).__iter__()
 
-        if self._whoosh_results is None or self._order_by is not False:
+        if self._whoosh_results is None or getattr(self, 'order_by', None):
             return _iter
 
         ordered = []
+        heapq.heapify(ordered)
+        rows = list(_iter)
 
-        for row in _iter:
+        for row in rows:
             # we have to convert the primary-key, as stored in the SQL database
             #  into a string because the key is stored as an `ID` in whoosh.
             #  The ID field is string only; plus, this allows for uuid pk's.
-            str_pk = str(getattr(row, self._pk))
-            heapq.heappush(
-                ordered, (self._whoosh_results[str_pk], row))
+            str_pk = getattr(row, self._pk, UNSET)
+
+            if str_pk is not UNSET:
+                heapq.heappush(ordered, (self._whoosh_results[str(str_pk)], row))
+            else:
+                return iter(rows)
 
         def inner():
             while ordered:
                 yield heapq.heappop(ordered)[1]
+
         return inner()
 
-    def search(self, query, limit=None, fields=None, or_=False):
-        """ Perform a woosh index search. """
+    def search(
+        self,
+        query: str,
+        limit: int = None,
+        fields: Optional[List[str]] = None,
+        or_: bool = False,
+    ):
+        """ Perform a whoosh index search. """
 
         if not isinstance(query, str):
             raise WhooshAlchemyError('query parameter must be string-like')
@@ -120,7 +158,7 @@ class Searcher(object):
         return results
 
 
-def _post_flush(app, changes):
+def _post_flush(app: Flask, changes: List[Tuple[Model, str]]):
     by_type = defaultdict(list)
 
     for instance, change in changes:
@@ -129,15 +167,18 @@ def _post_flush(app, changes):
         if hasattr(instance.__class__, '__searchable__'):
             by_type[instance.__class__].append((update, instance))
 
-    procs = app.config.get('WHOOSH_INDEXING_CPUS', 2)
-    limit = app.config.get('WHOOSH_INDEXING_RAM', 256)
+    procs = int(app.config.get('WHOOSH_INDEXING_CPUS', 2))
+    limit = int(app.config.get('WHOOSH_INDEXING_RAM', 256))
+    delay = float(app.config.get('WHOOSH_INDEXING_DELAY_SECS', 0.15))
 
     for model_name, values in by_type.items():
         ref = values[0][1]
 
-        index = AsyncWriter(search_index(app, ref),
-                            delay=0.15,
-                            writerargs=dict(proc=procs, limitmb=limit))
+        index = AsyncWriter(
+            search_index(app, ref),
+            delay=delay,
+            writerargs=dict(proc=procs, limitmb=limit)
+        )
         primary_field = ref.whoosh.pk
         searchable = ref.__searchable__
 
@@ -151,11 +192,10 @@ def _post_flush(app, changes):
                     for k in searchable:
                         try:
                             attrs[k] = str(getattr(v, k))
-                        except AttributeError:
-                            raise AttributeError('invalid attribute `%s`' % k)
+                        except AttributeError as e:
+                            raise WhooshAlchemyError('invalid attribute `%s`' % k) from e
 
                     attrs[primary_field] = pk
-
                     # create a new document, or update an old one, with all
                     #  of our new column values
                     writer.update_document(**attrs)
@@ -165,46 +205,35 @@ def _post_flush(app, changes):
     return EXT_CONTINUE
 
 
-def create_index(app, model):
-    path = app.config.get('WHOOSH_INDEX_PATH', DEFAULT_WHOOSH_INDEX_PATH)
-    name = model.__tablename__
-    # this is where all the search indexes will be stored on disk
-    full_path = os.path.join(path, name)
-
-    analyzer = get_analyzer(app, model)
-    schema, pk = get_schema(model, analyzer)
-
-    if whoosh.index.exists_in(full_path):
-        index = whoosh.index.open_dir(full_path, schema=schema)
-
-    else:
-        if not os.path.exists(full_path):
-            os.makedirs(full_path)
-        index = whoosh.index.create_in(full_path, schema)
-
-    app.search_indexes[name] = index
-    kls = model.__class__
-
-    kls.whoosh = model.whoosh = Searcher(pk, index)
-    kls.whoosh_pk = model.whoosh_pk = pk
-    kls.query_class = model.query_class = QueryProxy
-
-    if app.config.get('WHOOSH_RAM_CACHE', False):
-        ram_storage = RamStorage()
-        model.whoosh.searcher.set_caching_policy(storage=ram_storage)
-        kls.whoosh.searcher.set_caching_policy(storage=ram_storage)
-    return index
-
-
-def get_analyzer(app, model):
+def get_analyzer(
+    app: Flask,
+    model: Model,
+) -> Analyzer:
     analyzer = getattr(model, '__analyzer__', None)
     if not analyzer:
         analyzer = app.config.get('WHOOSH_ANALYZER', DEFAULT_WHOOSH_ANALYZER)
-        setattr(model, '__analyzer__', analyzer)
+
+        if isinstance(analyzer, str):
+            try:
+                mod = importlib.import_module('whoosh.analysis', analyzer)
+                analyzer = getattr(mod, analyzer)
+            except Exception as e:
+                raise WhooshAlchemyError from e
+
+        if not isinstance(analyzer,
+                          (CompositeAnalyzer, Analyzer)) and callable(analyzer):
+            val = analyzer()
+        else:
+            val = analyzer
+        setattr(model, '__analyzer__', val)
+        analyzer = val
     return analyzer
 
 
-def get_schema(model, analyzer):
+def get_schema(
+    model: Model,
+    analyzer: Analyzer,
+) -> Tuple[Schema, Optional[str]]:
     schema = {}
     primary = None
     searchable = set(getattr(model, '__searchable__', []))
@@ -213,10 +242,14 @@ def get_schema(model, analyzer):
         # primary key id
         if field.primary_key:
             schema[field.name] = whoosh_fields.ID(
-                stored=True, unique=True, sortable=True)
+                stored=True,
+                unique=True,
+                sortable=True,
+            )
             primary = field.name
 
         if field.name not in searchable:
+            logger.debug('skipping %s, not in searchable', field.name)
             continue
 
         # text types
@@ -231,17 +264,69 @@ def get_schema(model, analyzer):
             schema[field.name] = whoosh_fields.BOOLEAN()
 
         else:
-            raise WhooshAlchemyError(
-                'cannot index column of type %s' % field.type)
+            raise WhooshAlchemyError('cannot index column of type %s' % field.type)
 
     return whoosh_fields.Schema(**schema), primary
 
 
-def search_index(app, model):
+def create_index(app: Flask, model: Type[Model], name: str) -> Index:
+    path = app.config.get('WHOOSH_INDEX_PATH', DEFAULT_WHOOSH_INDEX_PATH)
+
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    if not os.path.isdir(path):
+        raise WhooshAlchemyError('WHOOSH_INDEX_PATH must be a directory, %s' % path)
+
+    # this is where all the search indexes will be stored on disk
+    full_path = os.path.join(path, name)
+
+    analyzer = get_analyzer(app, model)
+    schema, pk = get_schema(model, analyzer)
+
+    if whoosh.index.exists_in(full_path):
+        index = whoosh.index.open_dir(full_path, schema=schema)
+
+    else:
+        if not os.path.exists(full_path):
+            os.makedirs(full_path)
+        index = whoosh.index.create_in(full_path, schema)
+
+    assert hasattr(app, 'search_indexes')
+    app.search_indexes[name] = index
+
+    # bind Searcher and QueryProxy to the model class and instance
+
+    searcher = Searcher(pk, index)
+
+    if app.config.get('WHOOSH_RAM_CACHE', False):
+        ram_storage = RamStorage()
+        searcher.searcher.set_caching_policy(storage=ram_storage)
+
+    if isinstance(model, Model):
+        kls = model.__class__
+    else:
+        kls = model
+
+    kls.whoosh = searcher
+    kls.whoosh_pk = pk
+    kls.query_class = QueryProxy
+    return index
+
+
+def search_index(app: Flask, model: Type[Model]) -> Index:
+    """Creates a search index for a given database Model and attaches that index
+    to the Flask application instance.
+    """
     if not hasattr(app, 'search_indexes'):
         app.search_indexes = {}
-    index = app.search_indexes.get(
-        model.__tablename__, create_index(app, model))
+
+    table_name = getattr(model, '__tablename__', UNSET)
+
+    if table_name is UNSET:
+        raise AttributeError('model <%s> is missing attribute __tablename__' % model)
+
+    index = app.search_indexes.get(table_name, create_index(app, model, table_name))
     return index
 
 
