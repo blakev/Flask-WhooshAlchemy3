@@ -77,6 +77,11 @@ class QueryProxy(flask_sqlalchemy.BaseQuery):
             else:                                   # Correcting Pagination BUG
                 # PK column not found in result row # Correcting Pagination BUG
                 return iter(super_rows)             # Correcting Pagination BUG
+            
+        def inner():
+            while ordered:
+                yield heapq.heappop(ordered)[1]
+        return inner()
 
     def search(self, query, limit=None, fields=None, or_=False):
         """ Perform a woosh index search. """
